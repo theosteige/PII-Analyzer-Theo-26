@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PII Analyzer (Quill Editor)</title>
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <!-- installation for Tippy.js, allows easy use of tooltips -->
+  <script src="https://unpkg.com/@popperjs/core@2"></script>
+  <script src="https://unpkg.com/tippy.js@6"></script>
+  <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/animations/scale.css" />
+  <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/themes/light.css" />
+</head>
+<body>
+  <h1>Personally Identifiable Information (PII) Analyzer</h1>
+  <div class="desc">This tool will take any text input, run a script to identify any PII (names, locations, phone numbers, etc.),
+    and highlight detected words in the input box. DISCLAIMER: This tool is not perfect. It might not recognize
+    PII, either because it does not have the capability to detect that type of PII yet, or because it is an imperfect algorithm. </div>
+
+  <div id="editor-container"></div>
+
+  <div class="desc">Note: Each entity type has a different color. 
+    This site is still in development, and eventually, the colors will have a stronger meaning 
+    attatched (severity level of PII).</div>
+
+
+  <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+  <script>
+  
+  // ---------- Initialize Quill ----------
+  const quill = new Quill("#editor-container", {
+    theme: "snow",
+    placeholder: "Type or paste your text here...",
+    modules: {
+      toolbar: false
+    }
+  });
+
+  let typingTimer;
+  const delay = 800; // ms to wait after typing stops
+
+  // ---------- Send text to Flask with delay between typing ---------- 
+  quill.on("text-change", function() {
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(sendToServer, delay);
+  });
+
+  let lastValue = "";
+
+  //------- Function to send input to python backend using flask------//
+  async function sendToServer() {
+
+    // to reduce lag, skip if text hasn't changed
+    const text = quill.getText().trim();
+    if (text === lastValue) return; // skip duplicates
+    lastValue = text;
+
+    try {
+      const response = await fetch("/process", {
+        method: "POST",
+        headers: { "highlights-Type": "application/json" },
+        body: JSON.stringify({ prompt: text })
+      });
+
+      const listOfEntities = await response.json();
+      console.log(listOfEntities);
+      
+      renderHighlights(listOfEntities, text);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // ---------- Apply highlights in Quill ----------
+  function renderHighlights(listOfEntities, originalText) {
+    
+    // Remove old highlights first
+    const length = quill.getLength();
+    quill.removeFormat(0, length);
+
+    listOfEntities.forEach(entity => {
+      quill.formatText(entity.start, entity.text.length, {background: entity.color,});
+    });
+    listOfEntities.sort((a, b) => a.start - b.start); // sort so that the tooltips are in correct order
+      // Use Tippy to add tooltips to each entity -- customize content depending on type
+        const spans = document.querySelectorAll('.ql-editor span[style*="background-color"]');
+        spans.forEach((span, i) => {
+          const entity = listOfEntities[i];
+          if (entity) {
+            tippy(span, {
+            theme: 'light',
+            animation: 'scale',
+            content: "This looks like a "+ entity.entity_type + ". You might want to consider omitting this from your prompt, or replacing it with something less personal."
+          });
+        }
+      })
+    } 
+  </script>
+</body>
+</html>
