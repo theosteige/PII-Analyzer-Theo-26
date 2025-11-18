@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>PII Analyzer (Quill Editor)</title>
+  <title>PII Analyzer</title>
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
-  <!-- installation for Tippy.js, allows easy use of tooltips -->
+  <!-- installation for Tippy.js -->
   <script src="https://unpkg.com/@popperjs/core@2"></script>
   <script src="https://unpkg.com/tippy.js@6"></script>
   <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/animations/scale.css" />
@@ -22,7 +22,7 @@
 
   <div class="desc">Note: Each entity type has a different color. 
     This site is still in development, and eventually, the colors will have a stronger meaning 
-    attatched (severity level of PII).</div>
+    attached (severity level of PII).</div>
 
 
   <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
@@ -48,7 +48,7 @@
 
   let lastValue = "";
 
-  //------- Function to send input to python backend using flask------//
+  //------- Function to send input to python backend using flask------
   async function sendToServer() {
 
     // to reduce lag, skip if text hasn't changed
