@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Theo - Conversational PII Tracker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <h1><i class="fas fa-shield-alt"></i> Theo</h1>
+            <p class="subtitle">Conversational PII Tracker - See what an AI learns about you</p>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Chat Panel -->
+            <div class="chat-panel">
+                <div class="chat-header">
+                    <h2><i class="fas fa-comments"></i> Conversation</h2>
+                    <button id="reset-btn" class="btn btn-danger" title="Clear conversation">
+                        <i class="fas fa-trash-alt"></i> Reset
+                    </button>
+                </div>
+
+                <div class="chat-messages" id="chat-messages">
+                    <div class="welcome-message">
+                        <i class="fas fa-info-circle"></i>
+                        <p>Start a conversation to see how PII accumulates. Try sharing information like:</p>
+                        <ul>
+                            <li>"I am a college student"</li>
+                            <li>"I live in Schenectady"</li>
+                            <li>"My name is John and I work at IBM"</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="chat-input-area">
+                    <div class="role-selector">
+                        <button class="role-btn active" data-role="user">
+                            <i class="fas fa-user"></i> User
+                        </button>
+                        <button class="role-btn" data-role="assistant">
+                            <i class="fas fa-robot"></i> Assistant
+                        </button>
+                    </div>
+                    <div class="input-wrapper">
+                        <textarea
+                            id="message-input"
+                            placeholder="Type a message..."
+                            rows="2"
+                        ></textarea>
+                        <button id="send-btn" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Sidebar -->
+            <div class="profile-sidebar">
+                <div class="profile-header">
+                    <h2><i class="fas fa-user-secret"></i> PII Profile</h2>
+                </div>
+
+                <!-- Identifiability Score -->
+                <div class="score-section">
+                    <h3>Identifiability Score</h3>
+                    <div class="score-meter">
+                        <div class="score-bar" id="score-bar"></div>
+                    </div>
+                    <div class="score-value" id="score-value">0/100</div>
+                    <p class="score-description" id="score-description">Share some information to see your identifiability score.</p>
+                </div>
+
+                <!-- Quick Inference -->
+                <div class="inference-section">
+                    <h3><i class="fas fa-brain"></i> AI Inference</h3>
+                    <div class="quick-inference" id="quick-inference">
+                        <p class="placeholder">No inferences yet. Add messages to see what can be deduced.</p>
+                    </div>
+                    <button id="full-inference-btn" class="btn btn-secondary" disabled>
+                        <i class="fas fa-search"></i> Generate Detailed Analysis
+                    </button>
+                </div>
+
+                <!-- Categories -->
+                <div class="categories-section">
+                    <h3>Detected Information</h3>
+                    <div class="categories-list" id="categories-list">
+                        <p class="placeholder">No PII detected yet.</p>
+                    </div>
+                </div>
+
+                <!-- Summary -->
+                <div class="summary-section">
+                    <h3><i class="fas fa-list-ul"></i> Summary</h3>
+                    <ul class="summary-list" id="summary-list">
+                        <li class="placeholder">No information collected yet.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Full Inference Modal -->
+        <div class="modal" id="inference-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><i class="fas fa-brain"></i> Detailed PII Analysis</h2>
+                    <button class="modal-close" id="modal-close">&times;</button>
+                </div>
+                <div class="modal-body" id="inference-content">
+                    <div class="loading">
+                        <i class="fas fa-spinner fa-spin"></i> Generating analysis...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let currentRole = 'user';
+        let isLoading = false;
+
+        // DOM Elements
+        const chatMessages = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const roleButtons = document.querySelectorAll('.role-btn');
+        const scoreBar = document.getElementById('score-bar');
+        const scoreValue = document.getElementById('score-value');
+        const scoreDescription = document.getElementById('score-description');
+        const quickInference = document.getElementById('quick-inference');
+        const fullInferenceBtn = document.getElementById('full-inference-btn');
+        const categoriesList = document.getElementById('categories-list');
+        const summaryList = document.getElementById('summary-list');
+        const inferenceModal = document.getElementById('inference-modal');
+        const inferenceContent = document.getElementById('inference-content');
+        const modalClose = document.getElementById('modal-close');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadConversation();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            // Role selection
+            roleButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    roleButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentRole = btn.dataset.role;
+                });
+            });
+
+            // Send message
+            sendBtn.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            // Reset
+            resetBtn.addEventListener('click', resetConversation);
+
+            // Full inference
+            fullInferenceBtn.addEventListener('click', generateFullInference);
+
+            // Modal
+            modalClose.addEventListener('click', () => {
+                inferenceModal.classList.remove('active');
+            });
+            inferenceModal.addEventListener('click', (e) => {
+                if (e.target === inferenceModal) {
+                    inferenceModal.classList.remove('active');
+                }
+            });
+        }
+
+        async function loadConversation() {
+            try {
+                const [convResponse, profileResponse] = await Promise.all([
+                    fetch('/conversation'),
+                    fetch('/profile')
+                ]);
+
+                const convData = await convResponse.json();
+                const profileData = await profileResponse.json();
+
+                // Render messages
+                if (convData.messages && convData.messages.length > 0) {
+                    chatMessages.innerHTML = '';
+                    convData.messages.forEach(msg => renderMessage(msg));
+                }
+
+                // Update profile
+                updateProfile(profileData.profile);
+
+                // Enable inference button if available
+                if (profileData.inference_available && profileData.message_count > 0) {
+                    fullInferenceBtn.disabled = false;
+                }
+
+            } catch (err) {
+                console.error('Failed to load conversation:', err);
+            }
+        }
+
+        async function sendMessage() {
+            const content = messageInput.value.trim();
+            if (!content || isLoading) return;
+
+            isLoading = true;
+            sendBtn.disabled = true;
+            messageInput.disabled = true;
+
+            // Clear welcome message if present
+            const welcomeMsg = chatMessages.querySelector('.welcome-message');
+            if (welcomeMsg) welcomeMsg.remove();
+
+            try {
+                const response = await fetch('/message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content, role: currentRole })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                // Render message
+                renderMessage(data.message);
+
+                // Update profile
+                updateProfile(data.profile);
+
+                // Update quick inference
+                if (data.quick_inference) {
+                    quickInference.innerHTML = `<p>${escapeHtml(data.quick_inference)}</p>`;
+                    fullInferenceBtn.disabled = false;
+                }
+
+                // Clear input
+                messageInput.value = '';
+
+            } catch (err) {
+                console.error('Failed to send message:', err);
+                alert('Failed to send message. Please try again.');
+            } finally {
+                isLoading = false;
+                sendBtn.disabled = false;
+                messageInput.disabled = false;
+                messageInput.focus();
+            }
+        }
+
+        function renderMessage(message) {
+            const div = document.createElement('div');
+            div.className = `message message-${message.role}`;
+
+            const icon = message.role === 'user' ? 'fa-user' : 'fa-robot';
+            const label = message.role === 'user' ? 'You' : 'Assistant';
+
+            // Highlight PII in content - properly escape all text to prevent XSS
+            let highlightedContent = escapeHtml(message.content);
+            if (message.pii_entities && message.pii_entities.length > 0) {
+                // Sort by start position descending to avoid index shifting
+                const sortedEntities = [...message.pii_entities].sort((a, b) => b.start - a.start);
+
+                // Work with original text, escape each segment, then combine
+                let content = message.content;
+                sortedEntities.forEach(entity => {
+                    const before = escapeHtml(content.substring(0, entity.start));
+                    const text = escapeHtml(content.substring(entity.start, entity.end));
+                    const after = content.substring(entity.end);
+                    const safeColor = sanitizeColor(entity.color);
+                    const safeType = escapeHtml(entity.entity_type);
+                    const safeScore = Math.round(Number(entity.score) * 100) || 0;
+                    content = before +
+                        `<span class="pii-highlight" style="background-color: ${safeColor};" title="${safeType} (${safeScore}% confidence)">${text}</span>` +
+                        after;
+                });
+                highlightedContent = content;
+            }
+
+            div.innerHTML = `
+                <div class="message-header">
+                    <i class="fas ${icon}"></i>
+                    <span class="message-role">${label}</span>
+                    <span class="message-time">${formatTime(message.timestamp)}</span>
+                </div>
+                <div class="message-content">${highlightedContent}</div>
+                ${message.pii_entities && message.pii_entities.length > 0 ?
+                    `<div class="message-pii-count">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        ${message.pii_entities.length} PII item${message.pii_entities.length > 1 ? 's' : ''} detected
+                    </div>` : ''}
+            `;
+
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function updateProfile(profile) {
+            // Update score
+            const score = Math.round(profile.identifiability_score);
+            scoreBar.style.width = `${score}%`;
+            scoreBar.className = 'score-bar ' + getScoreClass(score);
+            scoreValue.textContent = `${score}/100`;
+            scoreDescription.textContent = getScoreDescription(score);
+
+            // Update categories
+            const activeCategories = Object.entries(profile.categories)
+                .filter(([_, cat]) => cat.count > 0);
+
+            if (activeCategories.length > 0) {
+                categoriesList.innerHTML = activeCategories.map(([key, cat]) => {
+                    const safeColor = sanitizeColor(cat.color);
+                    const safeName = escapeHtml(cat.name);
+                    const safeIcon = escapeHtml(cat.icon).replace(/[^a-z0-9-]/gi, '');
+                    const safeCount = parseInt(cat.count, 10) || 0;
+                    return `
+                    <div class="category-item">
+                        <div class="category-header" style="border-left-color: ${safeColor};">
+                            <i class="fas fa-${safeIcon}"></i>
+                            <span class="category-name">${safeName}</span>
+                            <span class="category-count">${safeCount}</span>
+                        </div>
+                        <div class="category-values">
+                            ${cat.unique_values.map(v => `<span class="value-tag" style="background-color: ${safeColor}20; border-color: ${safeColor};">${escapeHtml(v)}</span>`).join('')}
+                        </div>
+                    </div>
+                `}).join('');
+            } else {
+                categoriesList.innerHTML = '<p class="placeholder">No PII detected yet.</p>';
+            }
+
+            // Update summary
+            if (profile.summary && profile.summary.length > 0) {
+                summaryList.innerHTML = profile.summary.map(s =>
+                    `<li>${escapeHtml(s)}</li>`
+                ).join('');
+            } else {
+                summaryList.innerHTML = '<li class="placeholder">No information collected yet.</li>';
+            }
+        }
+
+        async function generateFullInference() {
+            inferenceModal.classList.add('active');
+            inferenceContent.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Generating detailed analysis...</div>';
+
+            try {
+                const response = await fetch('/infer', { method: 'POST' });
+                const data = await response.json();
+
+                if (data.error) {
+                    inferenceContent.innerHTML = `<div class="error"><i class="fas fa-exclamation-circle"></i> ${escapeHtml(data.error)}</div>`;
+                    return;
+                }
+
+                // Render markdown-like content
+                inferenceContent.innerHTML = `
+                    <div class="inference-result">
+                        ${formatInference(data.inference)}
+                    </div>
+                    ${data.cached ? '<p class="cached-note"><i class="fas fa-clock"></i> Cached result (profile unchanged)</p>' : ''}
+                `;
+
+            } catch (err) {
+                inferenceContent.innerHTML = `<div class="error"><i class="fas fa-exclamation-circle"></i> Failed to generate analysis. Please try again.</div>`;
+            }
+        }
+
+        async function resetConversation() {
+            if (!confirm('Are you sure you want to clear the conversation? All PII data will be lost.')) {
+                return;
+            }
+
+            try {
+                await fetch('/reset', { method: 'POST' });
+
+                // Reset UI
+                chatMessages.innerHTML = `
+                    <div class="welcome-message">
+                        <i class="fas fa-info-circle"></i>
+                        <p>Start a conversation to see how PII accumulates. Try sharing information like:</p>
+                        <ul>
+                            <li>"I am a college student"</li>
+                            <li>"I live in Schenectady"</li>
+                            <li>"My name is John and I work at IBM"</li>
+                        </ul>
+                    </div>
+                `;
+
+                scoreBar.style.width = '0%';
+                scoreBar.className = 'score-bar';
+                scoreValue.textContent = '0/100';
+                scoreDescription.textContent = 'Share some information to see your identifiability score.';
+                quickInference.innerHTML = '<p class="placeholder">No inferences yet. Add messages to see what can be deduced.</p>';
+                fullInferenceBtn.disabled = true;
+                categoriesList.innerHTML = '<p class="placeholder">No PII detected yet.</p>';
+                summaryList.innerHTML = '<li class="placeholder">No information collected yet.</li>';
+
+            } catch (err) {
+                console.error('Failed to reset:', err);
+                alert('Failed to reset conversation. Please try again.');
+            }
+        }
+
+        // Utility functions
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        function isValidColor(color) {
+            // Validate hex color format to prevent CSS injection
+            return /^#[0-9A-Fa-f]{6}$/.test(color);
+        }
+
+        function sanitizeColor(color) {
+            return isValidColor(color) ? color : '#95A5A6';
+        }
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function getScoreClass(score) {
+            if (score < 25) return 'score-low';
+            if (score < 50) return 'score-medium';
+            if (score < 75) return 'score-high';
+            return 'score-critical';
+        }
+
+        function getScoreDescription(score) {
+            if (score === 0) return 'Share some information to see your identifiability score.';
+            if (score < 25) return 'Low identifiability. Limited personal information shared.';
+            if (score < 50) return 'Moderate identifiability. Some personal details revealed.';
+            if (score < 75) return 'High identifiability. Significant personal information exposed.';
+            return 'Critical identifiability. You could likely be uniquely identified.';
+        }
+
+        function formatInference(text) {
+            // Escape first, then apply markdown-like formatting
+            let escaped = escapeHtml(text);
+            return escaped
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/^(\d+)\.\s/gm, '<span class="list-number">$1.</span> ')
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n/g, '<br>')
+                .replace(/^/, '<p>')
+                .replace(/$/, '</p>');
+        }
+    </script>
+</body>
+</html>
