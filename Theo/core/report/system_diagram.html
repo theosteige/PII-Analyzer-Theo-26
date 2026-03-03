@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>System Architecture Diagram</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #ffffff;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 0;
+  }
+  .diagram {
+    width: 900px;
+    height: 900px;
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* Row containers */
+  .row {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 24px;
+  }
+  .row.layers { gap: 28px; }
+
+  /* Boxes */
+  .box {
+    border-radius: 8px;
+    padding: 12px 16px;
+    text-align: center;
+  }
+  .box-title {
+    font-weight: 700;
+    font-size: 13px;
+    margin-bottom: 3px;
+  }
+  .box-subtitle {
+    font-size: 11px;
+    color: #555;
+    line-height: 1.35;
+  }
+
+  /* Input box */
+  .input-box {
+    background: #EEF2FF;
+    border: 2px solid #6366F1;
+    width: 260px;
+  }
+  .input-box .box-title { color: #4338CA; }
+
+  /* Endpoint box */
+  .endpoint-box {
+    background: #F0FDF4;
+    border: 2px solid #22C55E;
+    width: 300px;
+  }
+  .endpoint-box .box-title { color: #15803D; }
+
+  /* Layer group */
+  .layer-group {
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    padding: 14px 16px;
+    background: #FAFAFA;
+    flex: 1;
+    max-width: 420px;
+  }
+  .layer-label {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #fff;
+    padding: 3px 12px;
+    border-radius: 20px;
+    display: inline-block;
+    margin-bottom: 10px;
+  }
+  .layer1-label { background: #6366F1; }
+  .layer2-label { background: #E11D48; }
+
+  .layer-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .layer-item {
+    background: #fff;
+    border-radius: 6px;
+    padding: 9px 12px;
+    border: 1.5px solid #ddd;
+    text-align: center;
+  }
+  .layer-item .box-title { font-size: 12px; color: #1a1a1a; }
+  .layer-item .box-subtitle { font-size: 10.5px; }
+
+  .layer-output {
+    margin-top: 8px;
+    background: #fff;
+    border-radius: 6px;
+    padding: 7px 10px;
+    border: 2px dashed #999;
+    text-align: center;
+  }
+  .layer-output .box-title { font-size: 11px; color: #333; margin-bottom: 0; }
+
+  /* Three connection types */
+  .connection-types {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .conn-type {
+    flex: 1;
+    background: #FFF1F2;
+    border: 1.5px solid #FECDD3;
+    border-radius: 5px;
+    padding: 5px 4px;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: #BE123C;
+  }
+
+  /* Scoring box */
+  .scoring-box {
+    background: #FFFBEB;
+    border: 2px solid #F59E0B;
+    width: 460px;
+  }
+  .scoring-box .box-title { color: #B45309; }
+  .scoring-details {
+    display: flex;
+    gap: 10px;
+    margin-top: 6px;
+    justify-content: center;
+    align-items: center;
+  }
+  .scoring-detail {
+    background: #FEF3C7;
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 10.5px;
+    color: #92400E;
+    font-weight: 500;
+  }
+  .scoring-arrow {
+    font-size: 13px;
+    color: #B45309;
+    font-weight: 700;
+  }
+
+  /* UI output boxes */
+  .ui-group {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+  }
+  .ui-box {
+    background: #F0F9FF;
+    border: 2px solid #0EA5E9;
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+    flex: 1;
+    max-width: 200px;
+  }
+  .ui-box .box-title { color: #0369A1; font-size: 11.5px; }
+  .ui-box .box-subtitle { font-size: 10px; }
+
+  /* Arrows */
+  .arrow-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 30px;
+    position: relative;
+  }
+  .arrow {
+    width: 2.5px;
+    height: 100%;
+    background: #999;
+    position: relative;
+  }
+  .arrow::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 8px solid #999;
+  }
+  .arrow-label {
+    position: absolute;
+    right: calc(50% + 14px);
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: #888;
+    white-space: nowrap;
+    font-style: italic;
+  }
+
+  /* Split arrow */
+  .split-arrow {
+    height: 36px;
+    width: 100%;
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  .split-arrow svg, .merge-arrow svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Merge arrow */
+  .merge-arrow {
+    height: 36px;
+    width: 100%;
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  /* Section label */
+  .section-label {
+    text-align: center;
+  }
+  .section-label span {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    background: #0EA5E9;
+    padding: 3px 14px;
+    border-radius: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="diagram">
+
+  <!-- User Input -->
+  <div class="row">
+    <div class="box input-box">
+      <div class="box-title">User Types in Textarea</div>
+      <div class="box-subtitle">Draft message composed in chat interface</div>
+    </div>
+  </div>
+
+  <!-- Arrow down with label -->
+  <div class="arrow-container">
+    <div class="arrow"></div>
+    <div class="arrow-label">every 500ms</div>
+  </div>
+
+  <!-- Endpoint -->
+  <div class="row">
+    <div class="box endpoint-box">
+      <div class="box-title">/analyze-preview endpoint</div>
+      <div class="box-subtitle">Runs full analysis pipeline without storing the draft</div>
+    </div>
+  </div>
+
+  <!-- Split into two layers -->
+  <div class="split-arrow">
+    <svg viewBox="0 0 860 36" preserveAspectRatio="xMidYMid meet">
+      <line x1="430" y1="0" x2="430" y2="12" stroke="#999" stroke-width="2.5"/>
+      <line x1="215" y1="12" x2="645" y2="12" stroke="#999" stroke-width="2.5"/>
+      <line x1="215" y1="12" x2="215" y2="29" stroke="#999" stroke-width="2.5"/>
+      <polygon points="208,27 215,36 222,27" fill="#999"/>
+      <line x1="645" y1="12" x2="645" y2="29" stroke="#999" stroke-width="2.5"/>
+      <polygon points="638,27 645,36 652,27" fill="#999"/>
+    </svg>
+  </div>
+
+  <!-- Two detection layers -->
+  <div class="row layers">
+    <!-- Layer 1 -->
+    <div class="layer-group">
+      <span class="layer-label layer1-label">Layer 1: Per-Prompt Detection</span>
+      <div class="layer-inner">
+        <div class="layer-item">
+          <div class="box-title">Microsoft Presidio AnalyzerEngine</div>
+          <div class="box-subtitle">SSN, email, phone, credit card, 40+ entity types</div>
+        </div>
+        <div class="layer-item">
+          <div class="box-title">5 Custom Pattern Recognizers</div>
+          <div class="box-subtitle">Education, Occupation, Relationship, Age, Health</div>
+        </div>
+        <div class="layer-output">
+          <div class="box-title">PII Entities (confidence &ge; 0.4)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layer 2 -->
+    <div class="layer-group">
+      <span class="layer-label layer2-label">Layer 2: Cross-Message Detection</span>
+      <div class="layer-inner">
+        <div class="layer-item">
+          <div class="box-title">Coreference Resolution (fastcoref)</div>
+          <div class="box-subtitle">Links pronouns to entities across messages</div>
+        </div>
+        <div class="layer-item">
+          <div class="box-title">LLM Cross-Message Analysis</div>
+          <div class="box-subtitle">Detects connections between messages (GPT-4o-mini)</div>
+        </div>
+        <div class="connection-types">
+          <div class="conn-type">Retroactive</div>
+          <div class="conn-type">Combinatorial</div>
+          <div class="conn-type">Disambiguation</div>
+        </div>
+        <div class="layer-output">
+          <div class="box-title">Context Warnings (confidence &ge; 0.5)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Merge arrows into scoring -->
+  <div class="merge-arrow">
+    <svg viewBox="0 0 860 36" preserveAspectRatio="xMidYMid meet">
+      <line x1="215" y1="0" x2="215" y2="14" stroke="#999" stroke-width="2.5"/>
+      <line x1="645" y1="0" x2="645" y2="14" stroke="#999" stroke-width="2.5"/>
+      <line x1="215" y1="14" x2="645" y2="14" stroke="#999" stroke-width="2.5"/>
+      <line x1="430" y1="14" x2="430" y2="29" stroke="#999" stroke-width="2.5"/>
+      <polygon points="423,27 430,36 437,27" fill="#999"/>
+    </svg>
+  </div>
+
+  <!-- Scoring -->
+  <div class="row">
+    <div class="box scoring-box">
+      <div class="box-title">Identifiability Score (0&ndash;100)</div>
+      <div class="box-subtitle">12 weighted categories, diminishing returns, combination bonuses</div>
+      <div class="scoring-details">
+        <div class="scoring-detail">Current Score</div>
+        <span class="scoring-arrow">&rarr;</span>
+        <div class="scoring-detail">Projected Score</div>
+        <span class="scoring-arrow">=</span>
+        <div class="scoring-detail">Score Delta</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrow down -->
+  <div class="arrow-container">
+    <div class="arrow"></div>
+  </div>
+
+  <!-- UI Output Section -->
+  <div class="section-label">
+    <span>Real-Time UI Feedback (before message is sent)</span>
+  </div>
+  <div style="height: 6px;"></div>
+  <div class="ui-group">
+    <div class="ui-box">
+      <div class="box-title">In-Line PII Highlighting</div>
+      <div class="box-subtitle">Color-coded by entity type in the textarea</div>
+    </div>
+    <div class="ui-box">
+      <div class="box-title">Score Change Preview</div>
+      <div class="box-subtitle">Projected impact of sending the draft</div>
+    </div>
+    <div class="ui-box">
+      <div class="box-title">Cross-Message Warnings</div>
+      <div class="box-subtitle">Severity-graded alerts with source quotes</div>
+    </div>
+    <div class="ui-box">
+      <div class="box-title">PII Profile Sidebar</div>
+      <div class="box-subtitle">Cumulative category breakdown</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

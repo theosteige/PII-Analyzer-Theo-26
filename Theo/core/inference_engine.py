@@ -3,9 +3,19 @@ Inference Engine for Theo - Conversational PII Tracker
 Uses OpenAI to generate inferences from combined PII data.
 """
 
+import logging
 import os
-from typing import Optional
+from typing import Dict, List, Optional
 from openai import OpenAI
+
+logger = logging.getLogger(__name__)
+
+
+CHATBOT_SYSTEM_PROMPT = (
+    "You are Theo, a friendly and helpful general-purpose AI assistant. "
+    "Respond naturally and helpfully. Do not mention PII tracking or privacy "
+    "analysis — that is handled separately by the application interface."
+)
 
 
 INFERENCE_PROMPT_TEMPLATE = """You are a privacy analyst helping users understand what can be inferred about them from the personal information they've shared in a conversation with an AI.
@@ -145,3 +155,40 @@ In 2-3 sentences, what is the most significant inference that can be made by com
 
         except Exception:
             return "Unable to generate inference at this time."
+
+    def generate_chat_reply(
+        self,
+        conversation_history: List[Dict[str, str]],
+        model: str = "gpt-4o-mini"
+    ) -> str:
+        """
+        Generate a conversational reply from the chatbot.
+
+        Args:
+            conversation_history: List of {"role": str, "content": str} dicts
+            model: OpenAI model to use
+
+        Returns:
+            Assistant reply text
+        """
+        if not self.client:
+            return "I'm Theo, your AI assistant. Configure an OpenAI API key to enable full conversational replies."
+
+        # Cap history at last 20 messages for token management
+        recent_history = conversation_history[-20:]
+
+        messages = [{"role": "system", "content": CHATBOT_SYSTEM_PROMPT}]
+        messages.extend(recent_history)
+
+        try:
+            response = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=500
+            )
+            return response.choices[0].message.content
+
+        except Exception as e:
+            logger.error(f"Chat reply failed: {e}", exc_info=True)
+            return "I'm sorry, I wasn't able to generate a response. Please try again."

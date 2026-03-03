@@ -3,58 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Theo - Conversational PII Tracker</title>
+    <title>Theo</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div class="app-container">
-        <!-- Header -->
-        <header class="header">
-            <h1><i class="fas fa-shield-alt"></i> Theo</h1>
-            <p class="subtitle">Conversational PII Tracker - See what an AI learns about you</p>
-        </header>
-
         <!-- Main Content -->
         <div class="main-content">
             <!-- Chat Panel -->
             <div class="chat-panel">
-                <div class="chat-header">
-                    <h2><i class="fas fa-comments"></i> Conversation</h2>
-                    <button id="reset-btn" class="btn btn-danger" title="Clear conversation">
-                        <i class="fas fa-trash-alt"></i> Reset
-                    </button>
-                </div>
-
                 <div class="chat-messages" id="chat-messages">
                     <div class="welcome-message">
-                        <i class="fas fa-info-circle"></i>
-                        <p>Start a conversation to see how PII accumulates. Try sharing information like:</p>
-                        <ul>
-                            <li>"I am a college student"</li>
-                            <li>"I live in Schenectady"</li>
-                            <li>"My name is John and I work at IBM"</li>
-                        </ul>
+                        <p>Type a message to see what PII can be detected.</p>
+                    </div>
+                </div>
+
+                <div class="delta-panel" id="delta-panel" style="display: none;">
+                    <div class="delta-panel-header">
+                        <div class="delta-panel-title">
+                            <i class="fas fa-exclamation-triangle"></i> PII Impact Preview
+                        </div>
+                        <button class="delta-panel-dismiss" id="delta-dismiss">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
+                    <div class="delta-panel-body">
+                        <div id="delta-score-change"></div>
+                        <div id="delta-new-entities"></div>
+                        <div id="delta-entity-count"></div>
+                    </div>
+                    <div class="context-warnings" id="context-warnings" style="display: none;">
+                        <div class="context-warnings-header">
+                            <i class="fas fa-project-diagram"></i>
+                            <span>Cross-Message Analysis</span>
+                        </div>
+                        <div class="context-warnings-list" id="context-warnings-list"></div>
                     </div>
                 </div>
 
                 <div class="chat-input-area">
-                    <div class="role-selector">
-                        <button class="role-btn active" data-role="user">
-                            <i class="fas fa-user"></i> User
-                        </button>
-                        <button class="role-btn" data-role="assistant">
-                            <i class="fas fa-robot"></i> Assistant
-                        </button>
-                    </div>
                     <div class="input-wrapper">
-                        <textarea
-                            id="message-input"
-                            placeholder="Type a message..."
-                            rows="2"
-                        ></textarea>
+                        <div class="textarea-container">
+                            <div class="highlight-overlay" id="highlight-overlay"></div>
+                            <textarea
+                                id="message-input"
+                                placeholder="Type a message..."
+                                rows="2"
+                            ></textarea>
+                        </div>
                         <button id="send-btn" class="btn btn-primary">
                             <i class="fas fa-paper-plane"></i>
+                        </button>
+                        <button id="reset-btn" class="btn btn-danger" title="Clear conversation">
+                            <i class="fas fa-trash-alt"></i>
                         </button>
                     </div>
                 </div>
@@ -125,13 +127,15 @@
         // State
         let currentRole = 'user';
         let isLoading = false;
+        let previewAbortController = null;
+        let currentPreviewEntities = [];
+        let currentContextWarnings = [];
 
         // DOM Elements
         const chatMessages = document.getElementById('chat-messages');
         const messageInput = document.getElementById('message-input');
         const sendBtn = document.getElementById('send-btn');
         const resetBtn = document.getElementById('reset-btn');
-        const roleButtons = document.querySelectorAll('.role-btn');
         const scoreBar = document.getElementById('score-bar');
         const scoreValue = document.getElementById('score-value');
         const scoreDescription = document.getElementById('score-description');
@@ -142,6 +146,23 @@
         const inferenceModal = document.getElementById('inference-modal');
         const inferenceContent = document.getElementById('inference-content');
         const modalClose = document.getElementById('modal-close');
+        const highlightOverlay = document.getElementById('highlight-overlay');
+        const deltaPanel = document.getElementById('delta-panel');
+        const deltaDismiss = document.getElementById('delta-dismiss');
+        const deltaScoreChange = document.getElementById('delta-score-change');
+        const deltaNewEntities = document.getElementById('delta-new-entities');
+        const deltaEntityCount = document.getElementById('delta-entity-count');
+        const contextWarnings = document.getElementById('context-warnings');
+        const contextWarningsList = document.getElementById('context-warnings-list');
+
+        // Debounce utility
+        function debounce(fn, delay) {
+            let timer = null;
+            return function(...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn.apply(this, args), delay);
+            };
+        }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -150,15 +171,6 @@
         });
 
         function setupEventListeners() {
-            // Role selection
-            roleButtons.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    roleButtons.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    currentRole = btn.dataset.role;
-                });
-            });
-
             // Send message
             sendBtn.addEventListener('click', sendMessage);
             messageInput.addEventListener('keydown', (e) => {
@@ -168,11 +180,22 @@
                 }
             });
 
+            // Preview highlighting on input
+            messageInput.addEventListener('input', debounce(fetchPreview, 500));
+
+            // Scroll sync between textarea and overlay
+            messageInput.addEventListener('scroll', () => {
+                highlightOverlay.scrollTop = messageInput.scrollTop;
+            });
+
             // Reset
             resetBtn.addEventListener('click', resetConversation);
 
             // Full inference
             fullInferenceBtn.addEventListener('click', generateFullInference);
+
+            // Delta panel dismiss
+            deltaDismiss.addEventListener('click', hideDeltaPanel);
 
             // Modal
             modalClose.addEventListener('click', () => {
@@ -184,6 +207,217 @@
                 }
             });
         }
+
+        // --- Preview Highlighting ---
+
+        async function fetchPreview() {
+            const text = messageInput.value;
+            if (!text.trim()) {
+                clearPreviewHighlights();
+                return;
+            }
+
+            // Abort any in-flight preview request
+            if (previewAbortController) {
+                previewAbortController.abort();
+            }
+            previewAbortController = new AbortController();
+
+            try {
+                const response = await fetch('/analyze-preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: text }),
+                    signal: previewAbortController.signal
+                });
+
+                const data = await response.json();
+                currentPreviewEntities = data.entities || [];
+                renderPreviewHighlights(text, currentPreviewEntities);
+                updateDeltaPanel(data);
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    clearPreviewHighlights();
+                }
+            }
+        }
+
+        function renderPreviewHighlights(text, entities) {
+            if (!entities || entities.length === 0) {
+                highlightOverlay.innerHTML = escapeHtml(text);
+                return;
+            }
+
+            // Sort ascending by start, filter overlaps
+            const sorted = [...entities].sort((a, b) => a.start - b.start);
+            const filtered = [];
+            let lastEnd = 0;
+            for (const e of sorted) {
+                if (e.start >= lastEnd) {
+                    filtered.push(e);
+                    lastEnd = e.end;
+                }
+            }
+
+            // Build left-to-right with explicit escaping of each segment
+            let result = '';
+            let cursor = 0;
+            for (const entity of filtered) {
+                result += escapeHtml(text.substring(cursor, entity.start));
+                const matched = escapeHtml(text.substring(entity.start, entity.end));
+                const safeColor = sanitizeColor(entity.color);
+                result += `<span class="pii-preview-highlight" style="background-color: ${safeColor}66;">${matched}</span>`;
+                cursor = entity.end;
+            }
+            result += escapeHtml(text.substring(cursor));
+
+            highlightOverlay.innerHTML = result;
+        }
+
+        function clearPreviewHighlights() {
+            highlightOverlay.innerHTML = '';
+            currentPreviewEntities = [];
+            currentContextWarnings = [];
+            contextWarnings.style.display = 'none';
+            contextWarningsList.innerHTML = '';
+            hideDeltaPanel();
+        }
+
+        // --- Delta Panel ---
+
+        function updateDeltaPanel(data) {
+            const hasEntities = data.entities && data.entities.length > 0;
+            const hasContextWarnings = data.context_warnings && data.context_warnings.length > 0;
+
+            if (!hasEntities && !hasContextWarnings) {
+                hideDeltaPanel();
+                return;
+            }
+
+            if (hasEntities) {
+                const newCount = data.entities.filter(e => e.is_new).length;
+                const totalCount = data.entities.length;
+
+                // Score change
+                const currentScore = Math.round(data.current_score);
+                const projectedScore = Math.round(data.projected_score);
+                const delta = Math.round(data.score_delta);
+
+                if (delta > 0) {
+                    deltaScoreChange.innerHTML =
+                        `<span class="delta-score-change">${currentScore}</span>` +
+                        `<span class="delta-score-arrow"> &rarr; </span>` +
+                        `<span class="delta-score-projected">${projectedScore}</span>` +
+                        `<span class="delta-score-delta"> (+${delta})</span>`;
+                } else {
+                    deltaScoreChange.innerHTML =
+                        `<span class="delta-score-change">Score: ${projectedScore}</span>`;
+                }
+
+                // New entity types
+                if (data.new_entity_types && data.new_entity_types.length > 0) {
+                    deltaNewEntities.textContent = 'Would reveal: ' + data.new_entity_types.join(', ');
+                } else {
+                    deltaNewEntities.textContent = '';
+                }
+
+                // Entity count
+                deltaEntityCount.textContent =
+                    `${totalCount} PII item${totalCount !== 1 ? 's' : ''} detected` +
+                    (newCount > 0 ? ` (${newCount} new)` : '');
+            } else {
+                deltaScoreChange.innerHTML = '';
+                deltaNewEntities.textContent = '';
+                deltaEntityCount.textContent = '';
+            }
+
+            // Context warnings
+            renderContextWarnings(data.context_warnings || []);
+
+            deltaPanel.style.display = '';
+        }
+
+        function hideDeltaPanel() {
+            deltaPanel.style.display = 'none';
+        }
+
+        // --- Context Warnings ---
+
+        function renderContextWarnings(warnings) {
+            currentContextWarnings = warnings || [];
+
+            if (currentContextWarnings.length === 0) {
+                contextWarnings.style.display = 'none';
+                contextWarningsList.innerHTML = '';
+                return;
+            }
+
+            contextWarnings.style.display = '';
+
+            const iconMap = {
+                'coreference': 'fa-link',
+                'retroactive': 'fa-history',
+                'combinatorial': 'fa-puzzle-piece',
+                'disambiguation': 'fa-map-pin'
+            };
+
+            contextWarningsList.innerHTML = currentContextWarnings.map(w => {
+                const icon = iconMap[w.warning_type] || 'fa-exclamation-circle';
+                const severityClass = 'context-warning-' + (w.severity || 'medium');
+                const confidencePct = Math.round((w.confidence || 0) * 100);
+
+                const quotesHtml = (w.source_texts && w.source_texts.length > 0)
+                    ? `<div class="context-warning-quotes">${w.source_texts.map(q =>
+                        `<span class="context-warning-quote">"${escapeHtml(q)}"</span>`
+                      ).join('')}</div>`
+                    : '';
+
+                const messagesHtml = (w.involved_messages && w.involved_messages.length > 0)
+                    ? `<span class="context-warning-badge">Messages ${w.involved_messages.join(', ')}</span>`
+                    : '';
+
+                return `
+                    <div class="context-warning-item ${severityClass}">
+                        <div class="context-warning-header">
+                            <i class="fas ${icon}"></i>
+                            <span class="context-warning-title">${escapeHtml(w.title)}</span>
+                            ${messagesHtml}
+                            <span class="context-warning-confidence">${confidencePct}%</span>
+                        </div>
+                        <div class="context-warning-description">${escapeHtml(w.description)}</div>
+                        ${quotesHtml}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- Typing Indicator ---
+
+        function showTypingIndicator() {
+            const div = document.createElement('div');
+            div.className = 'message message-assistant';
+            div.id = 'typing-indicator';
+            div.innerHTML = `
+                <div class="message-header">
+                    <i class="fas fa-robot"></i>
+                    <span class="message-role">Theo</span>
+                </div>
+                <div class="message-content">
+                    <div class="typing-indicator">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+            `;
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('typing-indicator');
+            if (indicator) indicator.remove();
+        }
+
+        // --- Core Functions ---
 
         async function loadConversation() {
             try {
@@ -210,7 +444,7 @@
                 }
 
             } catch (err) {
-                console.error('Failed to load conversation:', err);
+                // Silently fail on load
             }
         }
 
@@ -222,9 +456,20 @@
             sendBtn.disabled = true;
             messageInput.disabled = true;
 
+            // Clear preview state
+            clearPreviewHighlights();
+
             // Clear welcome message if present
             const welcomeMsg = chatMessages.querySelector('.welcome-message');
             if (welcomeMsg) welcomeMsg.remove();
+
+            // Clear input immediately
+            messageInput.value = '';
+
+            // Show typing indicator while waiting for response
+            if (currentRole === 'user') {
+                showTypingIndicator();
+            }
 
             try {
                 const response = await fetch('/message', {
@@ -235,13 +480,21 @@
 
                 const data = await response.json();
 
+                // Remove typing indicator
+                removeTypingIndicator();
+
                 if (data.error) {
                     alert(data.error);
                     return;
                 }
 
-                // Render message
+                // Render user message
                 renderMessage(data.message);
+
+                // Render assistant reply if present
+                if (data.assistant_message) {
+                    renderMessage(data.assistant_message);
+                }
 
                 // Update profile
                 updateProfile(data.profile);
@@ -252,11 +505,8 @@
                     fullInferenceBtn.disabled = false;
                 }
 
-                // Clear input
-                messageInput.value = '';
-
             } catch (err) {
-                console.error('Failed to send message:', err);
+                removeTypingIndicator();
                 alert('Failed to send message. Please try again.');
             } finally {
                 isLoading = false;
@@ -271,28 +521,36 @@
             div.className = `message message-${message.role}`;
 
             const icon = message.role === 'user' ? 'fa-user' : 'fa-robot';
-            const label = message.role === 'user' ? 'You' : 'Assistant';
+            const label = message.role === 'user' ? 'You' : 'Theo';
 
-            // Highlight PII in content - properly escape all text to prevent XSS
+            // Highlight PII in content - left-to-right build with explicit escaping
             let highlightedContent = escapeHtml(message.content);
             if (message.pii_entities && message.pii_entities.length > 0) {
-                // Sort by start position descending to avoid index shifting
-                const sortedEntities = [...message.pii_entities].sort((a, b) => b.start - a.start);
+                // Sort ascending by start, filter overlaps
+                const sorted = [...message.pii_entities].sort((a, b) => a.start - b.start);
+                const filtered = [];
+                let lastEnd = 0;
+                for (const e of sorted) {
+                    if (e.start >= lastEnd) {
+                        filtered.push(e);
+                        lastEnd = e.end;
+                    }
+                }
 
-                // Work with original text, escape each segment, then combine
-                let content = message.content;
-                sortedEntities.forEach(entity => {
-                    const before = escapeHtml(content.substring(0, entity.start));
-                    const text = escapeHtml(content.substring(entity.start, entity.end));
-                    const after = content.substring(entity.end);
+                let built = '';
+                let cursor = 0;
+                const rawContent = message.content;
+                filtered.forEach(entity => {
+                    built += escapeHtml(rawContent.substring(cursor, entity.start));
+                    const matched = escapeHtml(rawContent.substring(entity.start, entity.end));
                     const safeColor = sanitizeColor(entity.color);
                     const safeType = escapeHtml(entity.entity_type);
                     const safeScore = Math.round(Number(entity.score) * 100) || 0;
-                    content = before +
-                        `<span class="pii-highlight" style="background-color: ${safeColor};" title="${safeType} (${safeScore}% confidence)">${text}</span>` +
-                        after;
+                    built += `<span class="pii-highlight" style="background-color: ${safeColor};" title="${safeType} (${safeScore}% confidence)">${matched}</span>`;
+                    cursor = entity.end;
                 });
-                highlightedContent = content;
+                built += escapeHtml(rawContent.substring(cursor));
+                highlightedContent = built;
             }
 
             div.innerHTML = `
@@ -391,16 +649,13 @@
             try {
                 await fetch('/reset', { method: 'POST' });
 
+                // Clear preview state
+                clearPreviewHighlights();
+
                 // Reset UI
                 chatMessages.innerHTML = `
                     <div class="welcome-message">
-                        <i class="fas fa-info-circle"></i>
-                        <p>Start a conversation to see how PII accumulates. Try sharing information like:</p>
-                        <ul>
-                            <li>"I am a college student"</li>
-                            <li>"I live in Schenectady"</li>
-                            <li>"My name is John and I work at IBM"</li>
-                        </ul>
+                        <p>Type a message to see what PII can be detected.</p>
                     </div>
                 `;
 
@@ -414,7 +669,6 @@
                 summaryList.innerHTML = '<li class="placeholder">No information collected yet.</li>';
 
             } catch (err) {
-                console.error('Failed to reset:', err);
                 alert('Failed to reset conversation. Please try again.');
             }
         }
