@@ -55,6 +55,12 @@
                         <button id="send-btn" class="btn btn-primary">
                             <i class="fas fa-paper-plane"></i>
                         </button>
+                        <button id="export-txt-btn" class="btn btn-export" title="Download as TXT">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button id="export-copy-btn" class="btn btn-export" title="Copy conversation to clipboard">
+                            <i class="fas fa-copy"></i>
+                        </button>
                         <button id="reset-btn" class="btn btn-danger" title="Clear conversation">
                             <i class="fas fa-trash-alt"></i>
                         </button>
@@ -154,6 +160,8 @@
         const deltaEntityCount = document.getElementById('delta-entity-count');
         const contextWarnings = document.getElementById('context-warnings');
         const contextWarningsList = document.getElementById('context-warnings-list');
+        const exportTxtBtn = document.getElementById('export-txt-btn');
+        const exportCopyBtn = document.getElementById('export-copy-btn');
 
         // Debounce utility
         function debounce(fn, delay) {
@@ -187,6 +195,10 @@
             messageInput.addEventListener('scroll', () => {
                 highlightOverlay.scrollTop = messageInput.scrollTop;
             });
+
+            // Export
+            exportTxtBtn.addEventListener('click', exportAsTxt);
+            exportCopyBtn.addEventListener('click', exportToClipboard);
 
             // Reset
             resetBtn.addEventListener('click', resetConversation);
@@ -638,6 +650,45 @@
 
             } catch (err) {
                 inferenceContent.innerHTML = `<div class="error"><i class="fas fa-exclamation-circle"></i> Failed to generate analysis. Please try again.</div>`;
+            }
+        }
+
+        async function fetchExportText() {
+            const response = await fetch('/export');
+            const data = await response.json();
+            return data.text;
+        }
+
+        async function exportAsTxt() {
+            try {
+                const text = await fetchExportText();
+                const blob = new Blob([text], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'theo-conversation.txt';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                alert('Failed to export conversation.');
+            }
+        }
+
+        async function exportToClipboard() {
+            try {
+                const text = await fetchExportText();
+                await navigator.clipboard.writeText(text);
+                const originalTitle = exportCopyBtn.title;
+                exportCopyBtn.title = 'Copied!';
+                exportCopyBtn.classList.add('btn-export-success');
+                setTimeout(() => {
+                    exportCopyBtn.title = originalTitle;
+                    exportCopyBtn.classList.remove('btn-export-success');
+                }, 2000);
+            } catch (err) {
+                alert('Failed to copy to clipboard.');
             }
         }
 

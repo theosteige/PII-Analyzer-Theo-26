@@ -6,6 +6,7 @@ Flask server for analyzing PII across conversation messages.
 import os
 import logging
 import uuid
+from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, session
 from flask_cors import CORS
@@ -369,6 +370,76 @@ def generate_inference():
     except Exception as e:
         logger.error(f"Inference generation failed: {e}", exc_info=True)
         return jsonify({"error": "Failed to generate inference. Please try again."}), 500
+
+
+@app.route("/export", methods=["GET"])
+def export_conversation():
+    """
+    Export the conversation as formatted plain text with PII annotations.
+
+    Returns:
+        { "text": "..." }
+    """
+    session_id = get_session_id()
+    conv_session = session_manager.get_session(session_id)
+
+    if not conv_session or len(conv_session.messages) == 0:
+        return jsonify({"text": "No conversation to export."})
+
+    lines = []
+    lines.append("=" * 60)
+    lines.append("  Theo - Conversation Export")
+    lines.append(f"  Exported: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append("=" * 60)
+    lines.append("")
+
+    all_pii_by_type = {}
+
+    for i, msg in enumerate(conv_session.messages):
+        role_label = "You" if msg.role == "user" else "Theo"
+        timestamp = msg.timestamp[:19].replace("T", " ") if msg.timestamp else ""
+
+        lines.append(f"[{role_label}] ({timestamp})")
+        lines.append(msg.content)
+
+        if msg.pii_entities:
+            pii_labels = []
+            for entity in msg.pii_entities:
+                label = f'  - {entity.entity_type}: "{entity.text}" ({round(entity.score * 100)}% confidence)'
+                pii_labels.append(label)
+
+                entity_type = entity.entity_type
+                if entity_type not in all_pii_by_type:
+                    all_pii_by_type[entity_type] = set()
+                all_pii_by_type[entity_type].add(entity.text)
+
+            lines.append(f"  >> {len(msg.pii_entities)} PII item(s) detected:")
+            lines.extend(pii_labels)
+
+        lines.append("")
+
+    # PII summary section
+    if all_pii_by_type:
+        lines.append("-" * 60)
+        lines.append("  PII Summary")
+        lines.append("-" * 60)
+        for entity_type, values in sorted(all_pii_by_type.items()):
+            lines.append(f"  {entity_type}:")
+            for val in sorted(values):
+                lines.append(f'    - "{val}"')
+        lines.append("")
+
+    # Identifiability score
+    all_entities = session_manager.get_all_pii_entities(session_id)
+    if all_entities:
+        temp_builder = ProfileBuilder()
+        profile = temp_builder.build_profile(all_entities)
+        score = round(profile.identifiability_score)
+        lines.append("-" * 60)
+        lines.append(f"  Identifiability Score: {score}/100")
+        lines.append("-" * 60)
+
+    return jsonify({"text": "\n".join(lines)})
 
 
 @app.route("/reset", methods=["POST"])

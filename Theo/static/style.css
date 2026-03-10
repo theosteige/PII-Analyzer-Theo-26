@@ -477,6 +477,23 @@ body {
     background: #dde4e6;
 }
 
+.btn-export {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+}
+
+.btn-export:hover {
+    background: var(--bg-color);
+    color: var(--text-color);
+    border-color: var(--text-muted);
+}
+
+.btn-export-success {
+    color: var(--success-color) !important;
+    border-color: var(--success-color) !important;
+}
+
 .btn-danger {
     background: transparent;
     color: var(--danger-color);
